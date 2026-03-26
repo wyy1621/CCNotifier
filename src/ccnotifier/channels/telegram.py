@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Dict
 
 from .base import BaseChannel
@@ -13,6 +14,7 @@ class TelegramChannel(BaseChannel):
         self.parse_mode = str(config.get("parse_mode", "Markdown"))
         self.timeout_seconds = int(config.get("timeout_seconds", 10))
         self.proxy_url = str(config.get("proxy_url", "")).strip()
+        self.auto_delete_after_seconds = self._normalize_auto_delete_seconds(config.get("auto_delete_after_seconds", 0))
         self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
 
     def validate_config(self) -> bool:
@@ -39,19 +41,9 @@ class TelegramChannel(BaseChannel):
             self.logger.error("Telegram 渠道需要 requests 依赖")
             return False
 
-        request_kwargs = {
-            "json": payload,
-            "timeout": self.timeout_seconds,
-        }
-        if self.proxy_url:
-            request_kwargs["proxies"] = {
-                "http": self.proxy_url,
-                "https": self.proxy_url,
-            }
-
         response = requests.post(
             f"{self.api_url}/sendMessage",
-            **request_kwargs,
+            **self._request_kwargs(payload),
         )
         if response.status_code != 200:
             self.logger.error("Telegram API 请求失败: HTTP %s", response.status_code)
@@ -61,7 +53,70 @@ class TelegramChannel(BaseChannel):
         if not result.get("ok"):
             self.logger.error("Telegram 通知发送失败: %s", result)
             return False
+
+        message_id = self._extract_message_id(result)
+        if self.auto_delete_after_seconds > 0 and message_id is not None:
+            self.logger.debug(
+                "Telegram 消息发送成功，message_id=%s，准备在 %s 秒后同步撤回",
+                message_id,
+                self.auto_delete_after_seconds,
+            )
+            self._delete_message_after_delay(message_id)
+        elif self.auto_delete_after_seconds > 0:
+            self.logger.warning("Telegram 消息发送成功但缺少 message_id，跳过自动撤回")
         return True
+
+    def _request_kwargs(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        request_kwargs: Dict[str, Any] = {
+            "json": payload,
+            "timeout": self.timeout_seconds,
+        }
+        if self.proxy_url:
+            request_kwargs["proxies"] = {
+                "http": self.proxy_url,
+                "https": self.proxy_url,
+            }
+        return request_kwargs
+
+    def _extract_message_id(self, result: Dict[str, Any]) -> int | None:
+        message = result.get("result")
+        if not isinstance(message, dict):
+            return None
+        message_id = message.get("message_id")
+        return message_id if isinstance(message_id, int) else None
+
+    def _delete_message_after_delay(self, message_id: int) -> None:
+        self.logger.debug("Telegram 自动撤回等待开始，message_id=%s", message_id)
+        time.sleep(self.auto_delete_after_seconds)
+        try:
+            import requests
+        except ImportError:
+            self.logger.error("Telegram 渠道需要 requests 依赖")
+            return
+
+        payload = {
+            "chat_id": self.chat_id,
+            "message_id": message_id,
+        }
+        try:
+            self.logger.debug("Telegram 开始调用 deleteMessage，message_id=%s", message_id)
+            response = requests.post(
+                f"{self.api_url}/deleteMessage",
+                **self._request_kwargs(payload),
+            )
+            if response.status_code != 200:
+                self.logger.error("Telegram 删除消息失败: HTTP %s", response.status_code)
+                return
+
+            result = response.json()
+            if not result.get("ok"):
+                self.logger.error("Telegram 删除消息失败: %s", result)
+                return
+        except Exception:
+            self.logger.exception("Telegram 删除消息时发生异常，message_id=%s", message_id)
+            return
+
+        self.logger.debug("Telegram 删除消息成功，message_id=%s", message_id)
 
     def _format_message(self, event: Dict[str, Any]) -> str:
         event_name = event.get("name", "notification")
@@ -130,6 +185,17 @@ class TelegramChannel(BaseChannel):
         if preview:
             lines.append(f"*输入预览*: `{self._escape(preview)}`")
         return "\n".join(lines)
+
+    def _normalize_auto_delete_seconds(self, value: Any) -> int:
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            seconds = 0
+        if seconds < 0:
+            return 0
+        if seconds > 10:
+            return 10
+        return seconds
 
     def _escape(self, value: str) -> str:
         escape_chars = "_*[]()~`>#+-=|{}.!"

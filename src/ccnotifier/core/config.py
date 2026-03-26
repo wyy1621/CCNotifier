@@ -42,6 +42,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "parse_mode": "Markdown",
             "timeout_seconds": 10,
             "proxy_url": "",
+            "auto_delete_after_seconds": 0,
         },
         "webhook": {
             "enabled": False,
@@ -120,6 +121,7 @@ channels:
     parse_mode: Markdown # 消息格式，首版默认 Markdown
     timeout_seconds: 10 # 请求超时秒数
     proxy_url: \"\" # 可选代理地址，例如 http://127.0.0.1:7890
+    auto_delete_after_seconds: 0 # 发送成功后同步等待再撤回；0 表示关闭，小于 0 按 0 处理，大于 10 按 10 处理
 
   webhook:
     enabled: false # 第二优先级渠道，首版默认关闭

@@ -118,6 +118,7 @@ channels:
     parse_mode: Markdown
     timeout_seconds: 10
     proxy_url: "" # optional HTTP proxy, for example http://127.0.0.1:7890
+    auto_delete_after_seconds: 0 # block after send, then delete; 0 disables it, values below 0 clamp to 0, values above 10 clamp to 10
 
   webhook:
     enabled: false
@@ -136,6 +137,8 @@ logging:
 
 Notes:
 - `PreToolUse.AskUserQuestion` notifications now prefer the readable question text instead of sending the full structured `tool_input`
+- Telegram can auto-delete sent messages via `auto_delete_after_seconds`; after a successful send it blocks for that many seconds before calling `deleteMessage`; `0` disables it, values below `0` clamp to `0`, and values above `10` clamp to `10`
+- Whether deletion succeeds still depends on Telegram's official permission rules
 - Local file logging now writes the full hook debug details to the file pointed to by `logging.file_path`, which makes event intake and mapping easier to inspect
 
 ## ⚠️ Current high-risk Bash rules
