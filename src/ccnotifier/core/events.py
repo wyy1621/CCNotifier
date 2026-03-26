@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+import os
+import re
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+SOURCE = "claude-code-hook"
+IDLE_PROMPT_EVENT_NAME = "idle-prompt"
+
+SENSITIVE_COMMAND_PATTERNS: list[tuple[str, str]] = [
+    ("rm-rf", r"rm\s+-rf"),
+    ("sudo-rm", r"sudo\s+rm"),
+    ("delete-from-where", r"delete\s+from.*where"),
+    ("drop-table", r"drop\s+table"),
+    ("truncate-table", r"truncate\s+table"),
+    ("git-push-force", r"git\s+push\s+--force"),
+    ("npm-publish", r"npm\s+publish"),
+    ("docker-rm-force", r"docker\s+rm.*-f"),
+    ("kill-9", r"kill\s+-9"),
+    ("chmod-777", r"chmod\s+777"),
+]
+
+
+@dataclass(slots=True)
+class NotificationEvent:
+    name: str
+    source: str
+    hook_event: str
+    timestamp: int
+    session_id: Optional[str]
+    cwd: str
+    project_name: str
+    summary: str
+    details: Dict[str, Any]
+    raw: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def build_event_from_hook(hook_event: str, payload: Dict[str, Any]) -> Optional[NotificationEvent]:
+    if hook_event == "Notification":
+        return _build_notification_event(payload)
+    if hook_event == "Stop":
+        return _build_stop_event(payload)
+    if hook_event == "PreToolUse":
+        return _build_pre_tool_use_event(payload)
+    return None
+
+
+def match_sensitive_command(command: str) -> Optional[str]:
+    command_lower = command.lower()
+    for rule_name, pattern in SENSITIVE_COMMAND_PATTERNS:
+        if re.search(pattern, command_lower):
+            return rule_name
+    return None
+
+
+def _build_notification_event(payload: Dict[str, Any]) -> Optional[NotificationEvent]:
+    if payload.get("type") != "permission_prompt":
+        return None
+
+    cwd = _extract_cwd(payload)
+    tool_name = _extract_tool_name(payload)
+    tool_input_preview = _truncate(_extract_tool_input_preview(payload), 200)
+    prompt = str(payload.get("message") or payload.get("prompt") or "")
+
+    return NotificationEvent(
+        name="permission-needed",
+        source=SOURCE,
+        hook_event="Notification",
+        timestamp=int(time.time()),
+        session_id=_extract_session_id(payload),
+        cwd=cwd,
+        project_name=_project_name(cwd),
+        summary="Claude Code 正在等待权限确认",
+        details={
+            "prompt": prompt,
+            "tool_name": tool_name,
+            "tool_input_preview": tool_input_preview,
+            "notification_type": payload.get("type"),
+            "session_id": _extract_session_id(payload),
+            "cwd": cwd,
+        },
+        raw=payload,
+    )
+
+
+def _build_stop_event(payload: Dict[str, Any]) -> NotificationEvent:
+    cwd = _extract_cwd(payload)
+    return NotificationEvent(
+        name="claude-stopped",
+        source=SOURCE,
+        hook_event="Stop",
+        timestamp=int(time.time()),
+        session_id=_extract_session_id(payload),
+        cwd=cwd,
+        project_name=_project_name(cwd),
+        summary="Claude Code 已停止，等待你查看结果或继续处理",
+        details={
+            "reason": payload.get("reason", ""),
+            "stop_hook_name": payload.get("stop_hook_name", "Stop"),
+            "session_id": _extract_session_id(payload),
+            "cwd": cwd,
+        },
+        raw=payload,
+    )
+
+
+def _build_pre_tool_use_event(payload: Dict[str, Any]) -> Optional[NotificationEvent]:
+    tool_name = _extract_tool_name(payload)
+    if tool_name != "Bash":
+        return None
+
+    command = _extract_command(payload)
+    if not command:
+        return None
+
+    matched_rule = match_sensitive_command(command)
+    if not matched_rule:
+        return None
+
+    cwd = _extract_cwd(payload)
+    return NotificationEvent(
+        name="sensitive-operation",
+        source=SOURCE,
+        hook_event="PreToolUse",
+        timestamp=int(time.time()),
+        session_id=_extract_session_id(payload),
+        cwd=cwd,
+        project_name=_project_name(cwd),
+        summary="Claude Code 即将执行高风险 Bash 操作",
+        details={
+            "tool_name": tool_name,
+            "matched_rule": matched_rule,
+            "command_preview": _truncate(command, 200),
+            "session_id": _extract_session_id(payload),
+            "cwd": cwd,
+        },
+        raw=payload,
+    )
+
+
+def _extract_session_id(payload: Dict[str, Any]) -> Optional[str]:
+    session_id = payload.get("session_id")
+    if session_id:
+        return str(session_id)
+    session = payload.get("session")
+    if isinstance(session, dict) and session.get("id"):
+        return str(session["id"])
+    return None
+
+
+def _extract_cwd(payload: Dict[str, Any]) -> str:
+    cwd = payload.get("cwd") or payload.get("working_directory")
+    if isinstance(cwd, str) and cwd:
+        return cwd
+    return os.getcwd()
+
+
+def _extract_tool_name(payload: Dict[str, Any]) -> str:
+    tool_name = payload.get("tool_name") or payload.get("tool")
+    return str(tool_name) if tool_name else ""
+
+
+def _extract_tool_input_preview(payload: Dict[str, Any]) -> str:
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        command = tool_input.get("command")
+        if command:
+            return str(command)
+        file_path = tool_input.get("file_path") or tool_input.get("path")
+        if file_path:
+            return str(file_path)
+        return str(tool_input)
+    if isinstance(tool_input, str):
+        return tool_input
+    return ""
+
+
+def _extract_command(payload: Dict[str, Any]) -> str:
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        command = tool_input.get("command")
+        return str(command) if command else ""
+    if isinstance(tool_input, str):
+        return tool_input
+    command = payload.get("command")
+    return str(command) if command else ""
+
+
+def _project_name(cwd: str) -> str:
+    return Path(cwd).name or cwd
+
+
+def _truncate(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3] + "..."

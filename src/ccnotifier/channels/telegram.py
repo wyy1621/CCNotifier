@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from .base import BaseChannel
+
+
+class TelegramChannel(BaseChannel):
+    def __init__(self, config: Dict[str, Any]) -> None:
+        super().__init__(config)
+        self.bot_token = str(config.get("bot_token", ""))
+        self.chat_id = str(config.get("chat_id", ""))
+        self.parse_mode = str(config.get("parse_mode", "Markdown"))
+        self.timeout_seconds = int(config.get("timeout_seconds", 10))
+        self.proxy_url = str(config.get("proxy_url", "")).strip()
+        self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
+
+    def validate_config(self) -> bool:
+        return bool(self.bot_token and self.chat_id)
+
+    def send_notification(self, event: Dict[str, Any]) -> bool:
+        if not self.validate_config():
+            self.logger.error("Telegram 渠道缺少 bot_token 或 chat_id")
+            return False
+        if self.proxy_url.startswith("socks"):
+            self.logger.error("Telegram 渠道仅支持 HTTP/HTTPS 代理，不支持 SOCKS")
+            return False
+
+        payload = {
+            "chat_id": self.chat_id,
+            "text": self._format_message(event),
+            "parse_mode": self.parse_mode,
+            "disable_web_page_preview": True,
+        }
+
+        try:
+            import requests
+        except ImportError:
+            self.logger.error("Telegram 渠道需要 requests 依赖")
+            return False
+
+        request_kwargs = {
+            "json": payload,
+            "timeout": self.timeout_seconds,
+        }
+        if self.proxy_url:
+            request_kwargs["proxies"] = {
+                "http": self.proxy_url,
+                "https": self.proxy_url,
+            }
+
+        response = requests.post(
+            f"{self.api_url}/sendMessage",
+            **request_kwargs,
+        )
+        if response.status_code != 200:
+            self.logger.error("Telegram API 请求失败: HTTP %s", response.status_code)
+            return False
+
+        result = response.json()
+        if not result.get("ok"):
+            self.logger.error("Telegram 通知发送失败: %s", result)
+            return False
+        return True
+
+    def _format_message(self, event: Dict[str, Any]) -> str:
+        event_name = event.get("name", "notification")
+        project_name = event.get("project_name", "unknown")
+        summary = event.get("summary", "")
+        details = event.get("details", {})
+
+        if event_name == "permission-needed":
+            prompt = self._escape(str(details.get("prompt", "")))
+            tool_name = self._escape(str(details.get("tool_name", "")))
+            preview = self._escape(str(details.get("tool_input_preview", "")))
+            return (
+                "🔐 *Claude Code 需要权限*\n\n"
+                f"*项目*: `{self._escape(project_name)}`\n"
+                f"*工具*: `{tool_name}`\n"
+                f"*提示*: {prompt}\n"
+                f"*输入预览*: `{preview}`"
+            )
+
+        if event_name == "claude-stopped":
+            reason = self._escape(str(details.get("reason", "")))
+            stop_hook_name = self._escape(str(details.get("stop_hook_name", "Stop")))
+            return (
+                "✅ *Claude Code 已停止*\n\n"
+                f"*项目*: `{self._escape(project_name)}`\n"
+                f"*摘要*: {self._escape(summary)}\n"
+                f"*原因*: {reason}\n"
+                f"*Hook*: `{stop_hook_name}`"
+            )
+
+        if event_name == "sensitive-operation":
+            matched_rule = self._escape(str(details.get("matched_rule", "")))
+            command_preview = self._escape(str(details.get("command_preview", "")))
+            return (
+                "⚠️ *Claude Code 即将执行高风险操作*\n\n"
+                f"*项目*: `{self._escape(project_name)}`\n"
+                f"*规则*: `{matched_rule}`\n"
+                f"*命令预览*: `{command_preview}`"
+            )
+
+        return (
+            "📣 *Claude Code 通知*\n\n"
+            f"*项目*: `{self._escape(project_name)}`\n"
+            f"*摘要*: {self._escape(summary)}"
+        )
+
+    def _escape(self, value: str) -> str:
+        escape_chars = "_*[]()~`>#+-=|{}.!"
+        escaped = []
+        for char in value:
+            if char in escape_chars:
+                escaped.append("\\" + char)
+            else:
+                escaped.append(char)
+        return "".join(escaped)
