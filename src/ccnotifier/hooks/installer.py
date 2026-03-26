@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import sys
 from copy import deepcopy
@@ -8,12 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
-LOCAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.local.json"
+USER_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+PROJECT_SETTINGS_PATH = Path.cwd() / ".claude" / "settings.json"
+LOCAL_SETTINGS_PATH = Path.cwd() / ".claude" / "settings.local.json"
 HOOK_TAG = "ccnotifier-managed"
 
 
-def install_hooks(target: str = "local") -> Path:
+def install_hooks(target: str = "user") -> Path:
     settings_path = _resolve_settings_path(target)
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     _backup_file(settings_path)
@@ -23,7 +25,7 @@ def install_hooks(target: str = "local") -> Path:
 
     hooks["Notification"] = _merge_hook_entries(
         hooks.get("Notification", []),
-        [_notification_entry()],
+        [_notification_entry("permission_prompt"), _notification_entry("idle_prompt")],
     )
     hooks["Stop"] = _merge_hook_entries(
         hooks.get("Stop", []),
@@ -31,14 +33,14 @@ def install_hooks(target: str = "local") -> Path:
     )
     hooks["PreToolUse"] = _merge_hook_entries(
         hooks.get("PreToolUse", []),
-        [_pre_tool_use_entry()],
+        [_pre_tool_use_entry("Bash"), _pre_tool_use_entry("AskUserQuestion")],
     )
 
     settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
     return settings_path
 
 
-def uninstall_hooks(target: str = "local") -> Path:
+def uninstall_hooks(target: str = "user") -> Path:
     settings_path = _resolve_settings_path(target)
     settings = _load_json(settings_path)
     hooks = settings.get("hooks", {})
@@ -60,10 +62,10 @@ def build_command() -> str:
     return f'{_quote(python_executable)} -m ccnotifier.hooks.handler'
 
 
-def _notification_entry() -> Dict[str, Any]:
+def _notification_entry(matcher: str) -> Dict[str, Any]:
     return {
         "_tag": HOOK_TAG,
-        "matcher": "permission_prompt",
+        "matcher": matcher,
         "hooks": [{"type": "command", "command": build_command()}],
     }
 
@@ -75,10 +77,10 @@ def _stop_entry() -> Dict[str, Any]:
     }
 
 
-def _pre_tool_use_entry() -> Dict[str, Any]:
+def _pre_tool_use_entry(matcher: str) -> Dict[str, Any]:
     return {
         "_tag": HOOK_TAG,
-        "matcher": "Bash",
+        "matcher": matcher,
         "hooks": [{"type": "command", "command": build_command()}],
     }
 
@@ -90,11 +92,13 @@ def _merge_hook_entries(existing: List[Dict[str, Any]], new_entries: List[Dict[s
 
 
 def _resolve_settings_path(target: str) -> Path:
-    if target == "global":
-        return SETTINGS_PATH
+    if target == "user":
+        return USER_SETTINGS_PATH
+    if target == "project":
+        return PROJECT_SETTINGS_PATH
     if target == "local":
         return LOCAL_SETTINGS_PATH
-    raise ValueError("target must be 'global' or 'local'")
+    raise ValueError("target must be 'local', 'project', or 'user'")
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -115,6 +119,4 @@ def _backup_file(path: Path) -> None:
 
 
 def _quote(value: str) -> str:
-    if " " in value:
-        return f'"{value}"'
-    return value
+    return shlex.quote(value)

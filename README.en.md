@@ -28,37 +28,71 @@ Initialize the default config:
 python -m ccnotifier init-config
 ```
 
-Install hooks into local Claude Code settings:
-
-```bash
-python -m ccnotifier install-hooks --target local
-```
-
 Default config path:
 
 ```text
 ~/.ccnotifier/config.yaml
 ```
 
+There are three ways to install hooks:
+
+### 1. Install into the User scope
+
+Writes to: `~/.claude/settings.json`
+
+```bash
+python -m ccnotifier install-hooks --target user
+```
+
+### 2. Install into the Project scope
+
+Writes to: `<project>/.claude/settings.json`
+
+```bash
+python -m ccnotifier install-hooks --target project
+```
+
+### 3. Install into the Local scope
+
+Writes to: `<project>/.claude/settings.local.json`
+
+```bash
+python -m ccnotifier install-hooks --target local
+```
+
+The default target is `user`, so this command also writes to `~/.claude/settings.json`:
+
+```bash
+python -m ccnotifier install-hooks
+```
+
+Uninstall:
+
+```bash
+python -m ccnotifier uninstall-hooks --target user
+python -m ccnotifier uninstall-hooks --target project
+python -m ccnotifier uninstall-hooks --target local
+```
+
 ## 📌 Supported events
 
-| Internal event | Claude Code source | Description |
-| -------------- | ------------------ | ----------- |
-| `permission-needed` | `Notification.permission_prompt` | Claude Code is waiting for permission approval |
-| `claude-stopped` | `Stop` | Claude Code has stopped and handed control back to the user |
-| `sensitive-operation` | `PreToolUse.Bash` | A Bash command matched a high-risk rule |
+| Internal event              | Claude Code source                                                                                 | Description                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `user-interaction-needed` | `Notification.permission_prompt` / `Notification.idle_prompt` / `PreToolUse.AskUserQuestion` | Claude Code needs user interaction                          |
+| `claude-stopped`          | `Stop`                                                                                           | Claude Code has stopped and handed control back to the user |
+| `sensitive-operation`     | `PreToolUse.Bash`                                                                                | A Bash command matched a high-risk rule                     |
 
 ## 📬 Notification channels
 
-| Channel | Current status |
-| ------- | -------------- |
-| Telegram | ✅ Supported |
-| Webhook | ✅ Supported |
-| DingTalk | 🚧 Planned |
-| Feishu | 🚧 Planned |
-| WeCom | 🚧 Planned |
-| Email | 🚧 Planned |
-| ServerChan | 🚧 Planned |
+| Channel    | Current status |
+| ---------- | -------------- |
+| Telegram   | ✅ Supported   |
+| Webhook    | ✅ Supported   |
+| DingTalk   | 🚧 Planned     |
+| Feishu     | 🚧 Planned     |
+| WeCom      | 🚧 Planned     |
+| Email      | 🚧 Planned     |
+| ServerChan | 🚧 Planned     |
 
 ## ⚙️ Configuration
 
@@ -69,13 +103,11 @@ default_channels:
   - telegram
 
 events:
-  permission-needed:
+  user-interaction-needed:
     channels: [telegram]
   claude-stopped:
     channels: [telegram]
   sensitive-operation:
-    channels: [telegram]
-  idle-prompt:
     channels: [telegram]
 
 channels:
@@ -97,50 +129,10 @@ rate_limit:
   window_seconds: 10
   max_events_per_window: 3
   scope: global
+
+logging:
+  file_path: ~/.ccnotifier/ccnotifier.log
 ```
-
-## 🔧 Hook installation and removal
-
-Install into local Claude Code settings:
-
-```bash
-python -m ccnotifier install-hooks --target local
-```
-
-Install into global Claude Code settings:
-
-```bash
-python -m ccnotifier install-hooks --target global
-```
-
-Uninstall:
-
-```bash
-python -m ccnotifier uninstall-hooks --target local
-```
-
-Installation behavior:
-
-- `--target local` writes to `~/.claude/settings.local.json`
-- `--target global` writes to `~/.claude/settings.json`
-- the installer backs up the existing target file before modification
-- only entries tagged with `ccnotifier-managed` are replaced
-- unrelated hooks are preserved
-
-## 🐍 Python interpreter behavior
-
-The installed hook command uses the Python interpreter that runs `install-hooks`.
-
-Implementation details:
-
-- the installer uses `sys.executable`
-- the absolute interpreter path is written into Claude Code settings
-- future hook executions directly use that recorded interpreter
-
-This means:
-
-- the Python environment used during `install-hooks` matters
-- if you switch environments later, reinstall hooks in the new environment
 
 ## ⚠️ Current high-risk Bash rules
 
@@ -157,40 +149,3 @@ Current built-in rules include:
 - `kill -9`
 - `chmod 777`
 
-## 🧰 CLI
-
-Available commands:
-
-```bash
-python -m ccnotifier init-config
-python -m ccnotifier print-default-config
-python -m ccnotifier install-hooks --target local
-python -m ccnotifier install-hooks --target global
-python -m ccnotifier uninstall-hooks --target local
-python -m ccnotifier uninstall-hooks --target global
-```
-
-## 📁 Project structure
-
-```text
-.
-├─ pyproject.toml
-├─ README.md
-├─ README.en.md
-├─ src/
-│  └─ ccnotifier/
-│     ├─ cli.py
-│     ├─ channels/
-│     │  ├─ base.py
-│     │  ├─ telegram.py
-│     │  └─ webhook.py
-│     ├─ core/
-│     │  ├─ config.py
-│     │  ├─ events.py
-│     │  ├─ notifier.py
-│     │  └─ rate_limit.py
-│     └─ hooks/
-│        ├─ handler.py
-│        └─ installer.py
-└─ tests/
-```

@@ -7,6 +7,7 @@ from typing import Any, Dict
 from .rate_limit import RateLimitConfig
 
 DEFAULT_CONFIG_PATH = Path.home() / ".ccnotifier" / "config.yaml"
+DEFAULT_LOG_FILE_PATH = Path("~/.ccnotifier/ccnotifier.log")
 
 
 @dataclass(slots=True)
@@ -15,6 +16,7 @@ class AppConfig:
     events: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     channels: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
+    logging_file_path: Path = field(default_factory=lambda: DEFAULT_LOG_FILE_PATH.expanduser())
     config_path: Path = DEFAULT_CONFIG_PATH
 
     def channels_for_event(self, event_name: str) -> list[str]:
@@ -28,11 +30,10 @@ class AppConfig:
 DEFAULT_CONFIG: Dict[str, Any] = {
     "default_channels": ["telegram"],
     "events": {
-        "permission-needed": {"channels": ["telegram"]},
+        "user-interaction-needed": {"channels": ["telegram"]},
         "claude-stopped": {"channels": ["telegram"]},
         "sensitive-operation": {"channels": ["telegram"]},
-        "idle-prompt": {"channels": ["telegram"]},
-    },
+            },
     "channels": {
         "telegram": {
             "enabled": False,
@@ -54,6 +55,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "max_events_per_window": 3,
         "scope": "global",
     },
+    "logging": {
+        "file_path": str(DEFAULT_LOG_FILE_PATH),
+    },
 }
 
 
@@ -74,6 +78,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         data = _deep_merge(data, loaded)
 
     rate_limit_data = data.get("rate_limit", {})
+    logging_data = data.get("logging", {})
+    logging_file_path = Path(str(logging_data.get("file_path", DEFAULT_LOG_FILE_PATH))).expanduser()
     return AppConfig(
         default_channels=[str(channel) for channel in data.get("default_channels", ["telegram"])],
         events=data.get("events", {}),
@@ -83,6 +89,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             window_seconds=int(rate_limit_data.get("window_seconds", 10)),
             max_events_per_window=int(rate_limit_data.get("max_events_per_window", 3)),
         ),
+        logging_file_path=logging_file_path,
         config_path=path,
     )
 
@@ -98,14 +105,12 @@ def render_default_config() -> str:
   - telegram # 默认通知渠道，事件未单独指定时走这里
 
 events:
-  permission-needed:
-    channels: [telegram] # 权限请求通知走 Telegram
+  user-interaction-needed:
+    channels: [telegram] # Claude 需要权限确认、回答问题或处理 idle prompt 时通知
   claude-stopped:
     channels: [telegram] # Claude 停止并等待用户查看/继续时通知
   sensitive-operation:
     channels: [telegram] # 命中高风险 Bash 模式时通知
-  idle-prompt:
-    channels: [telegram] # 预留扩展位，首版不启用
 
 channels:
   telegram:
@@ -126,6 +131,9 @@ rate_limit:
   window_seconds: 10 # 固定统计时间窗，例如 10 秒
   max_events_per_window: 3 # 单个时间窗内最多允许发送 3 条通知
   scope: global # 首版按全局总量限流，不区分渠道
+
+logging:
+  file_path: ~/.ccnotifier/ccnotifier.log # 本地日志文件路径，stdout 仍保留给 hook JSON 协议
 """
 
 

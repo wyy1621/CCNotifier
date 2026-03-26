@@ -15,10 +15,20 @@ def main() -> int:
     init_parser.add_argument("--path", default=str(DEFAULT_CONFIG_PATH))
 
     install_parser = subparsers.add_parser("install-hooks", help="Install Claude Code hooks")
-    install_parser.add_argument("--target", choices=["local", "global"], default="local")
+    install_parser.add_argument(
+        "--target",
+        choices=["local", "project", "user"],
+        default="user",
+        help="Settings scope: user=~/.claude/settings.json, project=.claude/settings.json, local=.claude/settings.local.json",
+    )
 
     uninstall_parser = subparsers.add_parser("uninstall-hooks", help="Remove Claude Code hooks")
-    uninstall_parser.add_argument("--target", choices=["local", "global"], default="local")
+    uninstall_parser.add_argument(
+        "--target",
+        choices=["local", "project", "user"],
+        default="user",
+        help="Settings scope: user=~/.claude/settings.json, project=.claude/settings.json, local=.claude/settings.local.json",
+    )
 
     subparsers.add_parser("print-default-config", help="Print default YAML config")
 

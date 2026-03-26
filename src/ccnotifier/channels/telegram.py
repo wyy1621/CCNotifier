@@ -69,14 +69,18 @@ class TelegramChannel(BaseChannel):
         summary = event.get("summary", "")
         details = event.get("details", {})
 
-        if event_name == "permission-needed":
+        if event_name == "user-interaction-needed":
             prompt = self._escape(str(details.get("prompt", "")))
             tool_name = self._escape(str(details.get("tool_name", "")))
             preview = self._escape(str(details.get("tool_input_preview", "")))
+            trigger_event = self._escape(str(event.get("hook_event", "")))
+            notification_type = self._escape(str(details.get("notification_type", "")))
             return (
-                "🔐 *Claude Code 需要权限*\n\n"
+                "🔔 *Claude Code 需要用户交互*\n\n"
                 f"*项目*: `{self._escape(project_name)}`\n"
                 f"*工具*: `{tool_name}`\n"
+                f"*触发事件*: `{trigger_event}`\n"
+                f"*事件类型*: `{notification_type}`\n"
                 f"*提示*: {prompt}\n"
                 f"*输入预览*: `{preview}`"
             )

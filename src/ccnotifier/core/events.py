@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 SOURCE = "claude-code-hook"
-IDLE_PROMPT_EVENT_NAME = "idle-prompt"
+USER_INTERACTION_EVENT_NAME = "user-interaction-needed"
 
 SENSITIVE_COMMAND_PATTERNS: list[tuple[str, str]] = [
     ("rm-rf", r"rm\s+-rf"),
@@ -60,28 +60,30 @@ def match_sensitive_command(command: str) -> Optional[str]:
 
 
 def _build_notification_event(payload: Dict[str, Any]) -> Optional[NotificationEvent]:
-    if payload.get("type") != "permission_prompt":
+    notification_type = str(payload.get("type") or "")
+    if notification_type not in {"permission_prompt", "idle_prompt"}:
         return None
 
     cwd = _extract_cwd(payload)
     tool_name = _extract_tool_name(payload)
     tool_input_preview = _truncate(_extract_tool_input_preview(payload), 200)
     prompt = str(payload.get("message") or payload.get("prompt") or "")
+    summary = "Claude Code 需要你确认权限或提供输入" if notification_type == "permission_prompt" else "Claude Code 正在等待你查看或继续输入"
 
     return NotificationEvent(
-        name="permission-needed",
+        name=USER_INTERACTION_EVENT_NAME,
         source=SOURCE,
         hook_event="Notification",
         timestamp=int(time.time()),
         session_id=_extract_session_id(payload),
         cwd=cwd,
         project_name=_project_name(cwd),
-        summary="Claude Code 正在等待权限确认",
+        summary=summary,
         details={
             "prompt": prompt,
             "tool_name": tool_name,
             "tool_input_preview": tool_input_preview,
-            "notification_type": payload.get("type"),
+            "notification_type": notification_type,
             "session_id": _extract_session_id(payload),
             "cwd": cwd,
         },
@@ -112,6 +114,8 @@ def _build_stop_event(payload: Dict[str, Any]) -> NotificationEvent:
 
 def _build_pre_tool_use_event(payload: Dict[str, Any]) -> Optional[NotificationEvent]:
     tool_name = _extract_tool_name(payload)
+    if tool_name == "AskUserQuestion":
+        return _build_ask_user_question_event(payload)
     if tool_name != "Bash":
         return None
 
@@ -137,6 +141,30 @@ def _build_pre_tool_use_event(payload: Dict[str, Any]) -> Optional[NotificationE
             "tool_name": tool_name,
             "matched_rule": matched_rule,
             "command_preview": _truncate(command, 200),
+            "session_id": _extract_session_id(payload),
+            "cwd": cwd,
+        },
+        raw=payload,
+    )
+
+
+def _build_ask_user_question_event(payload: Dict[str, Any]) -> NotificationEvent:
+    cwd = _extract_cwd(payload)
+    prompt = str(payload.get("message") or payload.get("prompt") or _extract_tool_input_preview(payload) or "")
+    return NotificationEvent(
+        name=USER_INTERACTION_EVENT_NAME,
+        source=SOURCE,
+        hook_event="PreToolUse",
+        timestamp=int(time.time()),
+        session_id=_extract_session_id(payload),
+        cwd=cwd,
+        project_name=_project_name(cwd),
+        summary="Claude Code 需要你回答问题后继续执行",
+        details={
+            "prompt": _truncate(prompt, 200),
+            "tool_name": "AskUserQuestion",
+            "tool_input_preview": _truncate(_extract_tool_input_preview(payload), 200),
+            "notification_type": "ask_user_question",
             "session_id": _extract_session_id(payload),
             "cwd": cwd,
         },

@@ -28,25 +28,59 @@ pip install -e .
 python -m ccnotifier init-config
 ```
 
-安装 hooks 到 Claude Code 本地设置：
-
-```bash
-python -m ccnotifier install-hooks --target local
-```
-
 默认配置文件路径：
 
 ```text
 ~/.ccnotifier/config.yaml
 ```
 
+安装 hooks 有三种方式：
+
+### 1. 安装到 User 作用域
+
+写入位置：`~/.claude/settings.json`
+
+```bash
+python -m ccnotifier install-hooks --target user
+```
+
+### 2. 安装到 Project 作用域
+
+写入位置：`<project>/.claude/settings.json`
+
+```bash
+python -m ccnotifier install-hooks --target project
+```
+
+### 3. 安装到 Local 作用域
+
+写入位置：`<project>/.claude/settings.local.json`
+
+```bash
+python -m ccnotifier install-hooks --target local
+```
+
+默认 target 是 `user`，所以直接运行下面这条命令时，也会写入 `~/.claude/settings.json`：
+
+```bash
+python -m ccnotifier install-hooks
+```
+
+卸载：
+
+```bash
+python -m ccnotifier uninstall-hooks --target user
+python -m ccnotifier uninstall-hooks --target project
+python -m ccnotifier uninstall-hooks --target local
+```
+
 ## 📌 当前支持的事件
 
-| 内部事件                | Claude Code 来源                   | 说明                                 |
-| ----------------------- | ---------------------------------- | ------------------------------------ |
-| `permission-needed`   | `Notification.permission_prompt` | Claude Code 正在等待权限确认         |
-| `claude-stopped`      | `Stop`                           | Claude Code 已停止并把控制权交回用户 |
-| `sensitive-operation` | `PreToolUse.Bash`                | Bash 命令命中高风险规则              |
+| 内部事件                    | Claude Code 来源                                                                                   | 说明                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `user-interaction-needed` | `Notification.permission_prompt` / `Notification.idle_prompt` / `PreToolUse.AskUserQuestion` | Claude Code 需要用户交互             |
+| `claude-stopped`          | `Stop`                                                                                           | Claude Code 已停止并把控制权交回用户 |
+| `sensitive-operation`     | `PreToolUse.Bash`                                                                                | Bash 命令命中高风险规则              |
 
 ## 📬 通知渠道
 
@@ -69,13 +103,11 @@ default_channels:
   - telegram
 
 events:
-  permission-needed:
+  user-interaction-needed:
     channels: [telegram]
   claude-stopped:
     channels: [telegram]
   sensitive-operation:
-    channels: [telegram]
-  idle-prompt:
     channels: [telegram]
 
 channels:
@@ -97,50 +129,10 @@ rate_limit:
   window_seconds: 10
   max_events_per_window: 3
   scope: global
+
+logging:
+  file_path: ~/.ccnotifier/ccnotifier.log
 ```
-
-## 🔧 Hook 安装与卸载
-
-安装到本地 Claude Code 设置：
-
-```bash
-python -m ccnotifier install-hooks --target local
-```
-
-安装到全局 Claude Code 设置：
-
-```bash
-python -m ccnotifier install-hooks --target global
-```
-
-卸载：
-
-```bash
-python -m ccnotifier uninstall-hooks --target local
-```
-
-安装行为说明：
-
-- `--target local` 写入 `~/.claude/settings.local.json`
-- `--target global` 写入 `~/.claude/settings.json`
-- 安装器会在修改前备份已有目标文件
-- 只会替换带有 `ccnotifier-managed` 标记的条目
-- 不会删除其他无关 hooks
-
-## 🐍 Python 解释器行为
-
-安装后的 hook 命令会固定使用执行 `install-hooks` 时对应的 Python 解释器。
-
-实现方式：
-
-- 安装器使用 `sys.executable`
-- 将该解释器绝对路径写入 Claude Code 设置文件
-- 后续 hook 执行时直接调用该解释器
-
-这意味着：
-
-- 执行 `install-hooks` 时所处的 Python 环境会影响后续 hook 执行
-- 如果之后切换了环境，应在新环境里重新执行安装
 
 ## ⚠️ 当前高风险 Bash 规则
 
@@ -157,40 +149,3 @@ python -m ccnotifier uninstall-hooks --target local
 - `kill -9`
 - `chmod 777`
 
-## 🧰 CLI
-
-可用命令：
-
-```bash
-python -m ccnotifier init-config
-python -m ccnotifier print-default-config
-python -m ccnotifier install-hooks --target local
-python -m ccnotifier install-hooks --target global
-python -m ccnotifier uninstall-hooks --target local
-python -m ccnotifier uninstall-hooks --target global
-```
-
-## 📁 项目结构
-
-```text
-.
-├─ pyproject.toml
-├─ README.md
-├─ README.en.md
-├─ src/
-│  └─ ccnotifier/
-│     ├─ cli.py
-│     ├─ channels/
-│     │  ├─ base.py
-│     │  ├─ telegram.py
-│     │  └─ webhook.py
-│     ├─ core/
-│     │  ├─ config.py
-│     │  ├─ events.py
-│     │  ├─ notifier.py
-│     │  └─ rate_limit.py
-│     └─ hooks/
-│        ├─ handler.py
-│        └─ installer.py
-└─ tests/
-```
