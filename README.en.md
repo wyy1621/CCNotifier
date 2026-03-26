@@ -134,6 +134,10 @@ logging:
   file_path: ~/.ccnotifier/ccnotifier.log
 ```
 
+Notes:
+- `PreToolUse.AskUserQuestion` notifications now prefer the readable question text instead of sending the full structured `tool_input`
+- Local file logging now writes the full hook debug details to the file pointed to by `logging.file_path`, which makes event intake and mapping easier to inspect
+
 ## ⚠️ Current high-risk Bash rules
 
 Current built-in rules include:

@@ -134,6 +134,10 @@ logging:
   file_path: ~/.ccnotifier/ccnotifier.log
 ```
 
+说明：
+- `PreToolUse.AskUserQuestion` 通知会优先提取可读的问题文本，不再直接发送整段结构化 `tool_input`
+- 本地日志会把完整 hook 调试信息写入 `logging.file_path` 指向的文件，便于排查事件接收与映射过程
+
 ## ⚠️ 当前高风险 Bash 规则
 
 当前内置规则包括：

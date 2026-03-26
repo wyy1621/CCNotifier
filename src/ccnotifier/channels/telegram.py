@@ -70,20 +70,7 @@ class TelegramChannel(BaseChannel):
         details = event.get("details", {})
 
         if event_name == "user-interaction-needed":
-            prompt = self._escape(str(details.get("prompt", "")))
-            tool_name = self._escape(str(details.get("tool_name", "")))
-            preview = self._escape(str(details.get("tool_input_preview", "")))
-            trigger_event = self._escape(str(event.get("hook_event", "")))
-            notification_type = self._escape(str(details.get("notification_type", "")))
-            return (
-                "🔔 *Claude Code 需要用户交互*\n\n"
-                f"*项目*: `{self._escape(project_name)}`\n"
-                f"*工具*: `{tool_name}`\n"
-                f"*触发事件*: `{trigger_event}`\n"
-                f"*事件类型*: `{notification_type}`\n"
-                f"*提示*: {prompt}\n"
-                f"*输入预览*: `{preview}`"
-            )
+            return self._format_user_interaction_message(event, project_name, details)
 
         if event_name == "claude-stopped":
             reason = self._escape(str(details.get("reason", "")))
@@ -111,6 +98,38 @@ class TelegramChannel(BaseChannel):
             f"*项目*: `{self._escape(project_name)}`\n"
             f"*摘要*: {self._escape(summary)}"
         )
+
+    def _format_user_interaction_message(self, event: Dict[str, Any], project_name: Any, details: Dict[str, Any]) -> str:
+        notification_type = str(details.get("notification_type", ""))
+        prompt = str(details.get("prompt", "")).strip()
+        tool_name = str(details.get("tool_name", "")).strip()
+        preview = str(details.get("tool_input_preview", "")).strip()
+        trigger_event = str(event.get("hook_event", "")).strip()
+
+        lines = [
+            "🔔 *Claude Code 需要用户交互*",
+            "",
+            f"*项目*: `{self._escape(str(project_name))}`",
+        ]
+
+        if notification_type == "ask_user_question":
+            if prompt:
+                lines.append(f"*问题*: {self._escape(prompt)}")
+            if preview:
+                lines.append(f"*补充*: {self._escape(preview)}")
+            if tool_name:
+                lines.append(f"*工具*: `{self._escape(tool_name)}`")
+            return "\n".join(lines)
+
+        if tool_name:
+            lines.append(f"*工具*: `{self._escape(tool_name)}`")
+        if trigger_event:
+            lines.append(f"*触发事件*: `{self._escape(trigger_event)}`")
+        if prompt:
+            lines.append(f"*提示*: {self._escape(prompt)}")
+        if preview:
+            lines.append(f"*输入预览*: `{self._escape(preview)}`")
+        return "\n".join(lines)
 
     def _escape(self, value: str) -> str:
         escape_chars = "_*[]()~`>#+-=|{}.!"

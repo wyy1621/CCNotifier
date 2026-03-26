@@ -60,7 +60,7 @@ def match_sensitive_command(command: str) -> Optional[str]:
 
 
 def _build_notification_event(payload: Dict[str, Any]) -> Optional[NotificationEvent]:
-    notification_type = str(payload.get("type") or "")
+    notification_type = str(payload.get("type") or payload.get("notification_type") or "")
     if notification_type not in {"permission_prompt", "idle_prompt"}:
         return None
 
@@ -150,7 +150,8 @@ def _build_pre_tool_use_event(payload: Dict[str, Any]) -> Optional[NotificationE
 
 def _build_ask_user_question_event(payload: Dict[str, Any]) -> NotificationEvent:
     cwd = _extract_cwd(payload)
-    prompt = str(payload.get("message") or payload.get("prompt") or _extract_tool_input_preview(payload) or "")
+    prompt = _extract_ask_user_question_prompt(payload)
+    tool_input_preview = _extract_ask_user_question_preview(payload)
     return NotificationEvent(
         name=USER_INTERACTION_EVENT_NAME,
         source=SOURCE,
@@ -163,7 +164,7 @@ def _build_ask_user_question_event(payload: Dict[str, Any]) -> NotificationEvent
         details={
             "prompt": _truncate(prompt, 200),
             "tool_name": "AskUserQuestion",
-            "tool_input_preview": _truncate(_extract_tool_input_preview(payload), 200),
+            "tool_input_preview": _truncate(tool_input_preview, 200),
             "notification_type": "ask_user_question",
             "session_id": _extract_session_id(payload),
             "cwd": cwd,
@@ -218,6 +219,54 @@ def _extract_command(payload: Dict[str, Any]) -> str:
         return tool_input
     command = payload.get("command")
     return str(command) if command else ""
+
+
+def _extract_ask_user_question_prompt(payload: Dict[str, Any]) -> str:
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        questions = tool_input.get("questions")
+        if isinstance(questions, list):
+            for question in questions:
+                if isinstance(question, dict):
+                    question_text = question.get("question")
+                    if isinstance(question_text, str) and question_text.strip():
+                        return question_text.strip()
+
+    for field_name in ("message", "prompt"):
+        value = payload.get(field_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _extract_ask_user_question_preview(payload: Dict[str, Any]) -> str:
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return ""
+
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list):
+        return ""
+
+    option_labels: list[str] = []
+    for question in questions:
+        if not isinstance(question, dict):
+            continue
+        options = question.get("options")
+        if not isinstance(options, list):
+            continue
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            label = option.get("label")
+            if isinstance(label, str) and label.strip():
+                option_labels.append(label.strip())
+        if option_labels:
+            break
+
+    if not option_labels:
+        return ""
+    return "可选项: " + " / ".join(option_labels[:3])
 
 
 def _project_name(cwd: str) -> str:
