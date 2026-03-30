@@ -74,6 +74,13 @@ python -m ccnotifier uninstall-hooks --target project
 python -m ccnotifier uninstall-hooks --target local
 ```
 
+安装后的 hook 配置会按 Claude Code hook 事件分别写入：
+- `Notification` 使用单个 regex matcher：`permission_prompt|idle_prompt`
+- `PreToolUse` 使用单个 regex matcher：`Bash|AskUserQuestion`
+- `Stop` 保持单独 entry
+
+不同 hook 事件不能合并到同一个 entry。
+
 ## 📌 当前支持的事件
 
 | 内部事件                    | Claude Code 来源                                                                                   | 说明                                 |

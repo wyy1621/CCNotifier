@@ -25,7 +25,7 @@ def install_hooks(target: str = "user") -> Path:
 
     hooks["Notification"] = _merge_hook_entries(
         hooks.get("Notification", []),
-        [_notification_entry("permission_prompt"), _notification_entry("idle_prompt")],
+        [_notification_entry("permission_prompt|idle_prompt")],
     )
     hooks["Stop"] = _merge_hook_entries(
         hooks.get("Stop", []),
@@ -33,7 +33,7 @@ def install_hooks(target: str = "user") -> Path:
     )
     hooks["PreToolUse"] = _merge_hook_entries(
         hooks.get("PreToolUse", []),
-        [_pre_tool_use_entry("Bash"), _pre_tool_use_entry("AskUserQuestion")],
+        [_pre_tool_use_entry("Bash|AskUserQuestion")],
     )
 
     settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
