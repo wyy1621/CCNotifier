@@ -81,6 +81,8 @@ The installed hook configuration is written per Claude Code hook event:
 
 Different hook events cannot be merged into the same entry.
 
+The managed command written during installation is always `python -m ccnotifier.hooks.handler`, so Claude settings do not bake in an absolute Python interpreter path from install time.
+
 ## 📌 Supported events
 
 | Internal event              | Claude Code source                                                                                 | Description                                                 |

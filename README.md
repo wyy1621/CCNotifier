@@ -81,6 +81,8 @@ python -m ccnotifier uninstall-hooks --target local
 
 不同 hook 事件不能合并到同一个 entry。
 
+安装写入的托管命令固定为 `python -m ccnotifier.hooks.handler`，不会把某次安装时的 Python 解释器绝对路径写死到 settings 中。
+
 ## 📌 当前支持的事件
 
 | 内部事件                    | Claude Code 来源                                                                                   | 说明                                 |

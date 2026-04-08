@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import shlex
 import shutil
-import sys
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -58,8 +56,7 @@ def uninstall_hooks(target: str = "user") -> Path:
 
 
 def build_command() -> str:
-    python_executable = str(Path(sys.executable))
-    return f'{_quote(python_executable)} -m ccnotifier.hooks.handler'
+    return "python -m ccnotifier.hooks.handler"
 
 
 def _notification_entry(matcher: str) -> Dict[str, Any]:
@@ -117,6 +114,3 @@ def _backup_file(path: Path) -> None:
     backup_path = path.with_name(f"{path.name}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     shutil.copy2(path, backup_path)
 
-
-def _quote(value: str) -> str:
-    return shlex.quote(value)
