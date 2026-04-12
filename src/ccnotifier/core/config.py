@@ -17,6 +17,8 @@ class AppConfig:
     channels: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
     logging_file_path: Path = field(default_factory=lambda: DEFAULT_LOG_FILE_PATH.expanduser())
+    logging_max_bytes: int = 1024 * 1024
+    logging_backup_count: int = 4
     config_path: Path = DEFAULT_CONFIG_PATH
 
     def channels_for_event(self, event_name: str) -> list[str]:
@@ -58,6 +60,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "logging": {
         "file_path": str(DEFAULT_LOG_FILE_PATH),
+        "max_bytes": 1048576,
+        "backup_count": 4,
     },
 }
 
@@ -81,8 +85,10 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     rate_limit_data = data.get("rate_limit", {})
     logging_data = data.get("logging", {})
     logging_file_path = Path(str(logging_data.get("file_path", DEFAULT_LOG_FILE_PATH))).expanduser()
+    logging_max_bytes = int(logging_data.get("max_bytes", 1048576))
+    logging_backup_count = int(logging_data.get("backup_count", 4))
     return AppConfig(
-        default_channels=[str(channel) for channel in data.get("default_channels", ["telegram"])],
+        default_channels=[str(channel) for channel in data.get("default_channels", ["telegram"] )],
         events=data.get("events", {}),
         channels=data.get("channels", {}),
         rate_limit=RateLimitConfig(
@@ -91,6 +97,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             max_events_per_window=int(rate_limit_data.get("max_events_per_window", 3)),
         ),
         logging_file_path=logging_file_path,
+        logging_max_bytes=logging_max_bytes,
+        logging_backup_count=logging_backup_count,
         config_path=path,
     )
 
@@ -136,6 +144,8 @@ rate_limit:
 
 logging:
   file_path: ~/.ccnotifier/ccnotifier.log # 本地日志文件路径，stdout 仍保留给 hook JSON 协议
+  max_bytes: 1048576 # 单个日志文件最大 1MB，超过后自动轮转
+  backup_count: 4 # 历史轮转文件保留 4 份，连同当前文件总计最多 5 份
 """
 
 

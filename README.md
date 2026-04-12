@@ -142,13 +142,15 @@ rate_limit:
 
 logging:
   file_path: ~/.ccnotifier/ccnotifier.log
+  max_bytes: 1048576
+  backup_count: 4
 ```
 
 说明：
 - `PreToolUse.AskUserQuestion` 通知会优先提取可读的问题文本，不再直接发送整段结构化 `tool_input`
 - Telegram 可通过 `auto_delete_after_seconds` 控制发送成功后同步等待再撤回；`0` 表示关闭，小于 `0` 按 `0` 处理，大于 `10` 按 `10` 处理
 - 消息能否成功撤回仍取决于 Telegram 官方权限规则
-- 本地日志会把完整 hook 调试信息写入 `logging.file_path` 指向的文件，便于排查事件接收与映射过程
+- 本地日志会把完整 hook 调试信息写入 `logging.file_path` 指向的文件，并按大小自动轮转；单文件 1MB，最多保留 5 份
 
 ## ⚠️ 当前高风险 Bash 规则
 

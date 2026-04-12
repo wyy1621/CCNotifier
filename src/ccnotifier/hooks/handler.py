@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict
 
@@ -55,17 +56,28 @@ def _configure_file_logging(config: AppConfig) -> Path:
     root_logger = logging.getLogger()
     log_file = log_path.resolve()
     for handler in list(root_logger.handlers):
-        if isinstance(handler, logging.FileHandler):
-            existing_path = Path(handler.baseFilename).resolve()
-            if existing_path == log_file:
-                handler.setLevel(logging.DEBUG)
-                handler.setFormatter(logging.Formatter(LOG_FORMAT))
-                root_logger.setLevel(logging.DEBUG)
-                return log_file
-            root_logger.removeHandler(handler)
-            handler.close()
+        if not isinstance(handler, logging.FileHandler):
+            continue
+        existing_path = Path(handler.baseFilename).resolve()
+        if (
+            existing_path == log_file
+            and isinstance(handler, RotatingFileHandler)
+            and handler.maxBytes == config.logging_max_bytes
+            and handler.backupCount == config.logging_backup_count
+        ):
+            handler.setLevel(logging.DEBUG)
+            handler.setFormatter(logging.Formatter(LOG_FORMAT))
+            root_logger.setLevel(logging.DEBUG)
+            return log_file
+        root_logger.removeHandler(handler)
+        handler.close()
 
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=config.logging_max_bytes,
+        backupCount=config.logging_backup_count,
+        encoding="utf-8",
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     root_logger.addHandler(file_handler)

@@ -142,13 +142,15 @@ rate_limit:
 
 logging:
   file_path: ~/.ccnotifier/ccnotifier.log
+  max_bytes: 1048576
+  backup_count: 4
 ```
 
 Notes:
 - `PreToolUse.AskUserQuestion` notifications now prefer the readable question text instead of sending the full structured `tool_input`
 - Telegram can auto-delete sent messages via `auto_delete_after_seconds`; after a successful send it blocks for that many seconds before calling `deleteMessage`; `0` disables it, values below `0` clamp to `0`, and values above `10` clamp to `10`
 - Whether deletion succeeds still depends on Telegram's official permission rules
-- Local file logging now writes the full hook debug details to the file pointed to by `logging.file_path`, which makes event intake and mapping easier to inspect
+- Local file logging writes the full hook debug details to the file pointed to by `logging.file_path` and rotates automatically by size; each file is capped at 1MB and at most 5 files are kept in total
 
 ## ⚠️ Current high-risk Bash rules
 
