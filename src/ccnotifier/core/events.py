@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .llm_review import LlmReviewInput
+
 SOURCE = "claude-code-hook"
 USER_INTERACTION_EVENT_NAME = "user-interaction-needed"
 
@@ -49,6 +51,26 @@ def build_event_from_hook(hook_event: str, payload: Dict[str, Any]) -> Optional[
     if hook_event == "PreToolUse":
         return _build_pre_tool_use_event(payload)
     return None
+
+
+# 输入: 原始 hook payload，输出: LLM 命令审核输入；缺少命令时返回 None。
+def extract_llm_review_input(payload: Dict[str, Any]) -> Optional[LlmReviewInput]:
+    if _extract_tool_name(payload) != "Bash":
+        return None
+
+    command = _extract_command(payload)
+    if not command:
+        return None
+
+    cwd = _extract_cwd(payload)
+    return LlmReviewInput(
+        command=command,
+        description=_extract_description(payload),
+        cwd=cwd,
+        project_name=_project_name(cwd),
+        session_id=_extract_session_id(payload),
+        tool_use_id=_extract_tool_use_id(payload),
+    )
 
 
 def match_sensitive_command(command: str) -> Optional[str]:
@@ -219,6 +241,24 @@ def _extract_command(payload: Dict[str, Any]) -> str:
         return tool_input
     command = payload.get("command")
     return str(command) if command else ""
+
+
+# 输入: 原始 hook payload，输出: 命令用途说明文本，不存在时返回空字符串。
+def _extract_description(payload: Dict[str, Any]) -> str:
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        description = tool_input.get("description")
+        return str(description) if description else ""
+    description = payload.get("description")
+    return str(description) if description else ""
+
+
+# 输入: 原始 hook payload，输出: tool_use_id，不存在时返回 None。
+def _extract_tool_use_id(payload: Dict[str, Any]) -> Optional[str]:
+    tool_use_id = payload.get("tool_use_id")
+    if tool_use_id:
+        return str(tool_use_id)
+    return None
 
 
 def _extract_ask_user_question_prompt(payload: Dict[str, Any]) -> str:

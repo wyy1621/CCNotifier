@@ -11,10 +11,20 @@ DEFAULT_LOG_FILE_PATH = Path("~/.ccnotifier/ccnotifier.log")
 
 
 @dataclass(slots=True)
+class LlmReviewConfig:
+    enabled: bool = False
+    api_base_url: str = ""
+    api_key: str = ""
+    model_name: str = ""
+    timeout_seconds: int = 10
+
+
+@dataclass(slots=True)
 class AppConfig:
     default_channels: list[str] = field(default_factory=lambda: ["telegram"])
     events: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     channels: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    llm_review: LlmReviewConfig = field(default_factory=LlmReviewConfig)
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
     logging_file_path: Path = field(default_factory=lambda: DEFAULT_LOG_FILE_PATH.expanduser())
     logging_max_bytes: int = 1024 * 1024
@@ -52,6 +62,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "timeout_seconds": 10,
         },
     },
+    "llm_review": {
+        "enabled": False,
+        "api_base_url": "",
+        "api_key": "",
+        "model_name": "",
+        "timeout_seconds": 10,
+    },
     "rate_limit": {
         "enabled": True,
         "window_seconds": 10,
@@ -84,6 +101,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
 
     rate_limit_data = data.get("rate_limit", {})
     logging_data = data.get("logging", {})
+    llm_review_data = data.get("llm_review", {})
     logging_file_path = Path(str(logging_data.get("file_path", DEFAULT_LOG_FILE_PATH))).expanduser()
     logging_max_bytes = int(logging_data.get("max_bytes", 1048576))
     logging_backup_count = int(logging_data.get("backup_count", 4))
@@ -91,6 +109,13 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         default_channels=[str(channel) for channel in data.get("default_channels", ["telegram"] )],
         events=data.get("events", {}),
         channels=data.get("channels", {}),
+        llm_review=LlmReviewConfig(
+            enabled=bool(llm_review_data.get("enabled", False)),
+            api_base_url=str(llm_review_data.get("api_base_url", "")).strip(),
+            api_key=str(llm_review_data.get("api_key", "")).strip(),
+            model_name=str(llm_review_data.get("model_name", "")).strip(),
+            timeout_seconds=int(llm_review_data.get("timeout_seconds", 10)),
+        ),
         rate_limit=RateLimitConfig(
             enabled=bool(rate_limit_data.get("enabled", True)),
             window_seconds=int(rate_limit_data.get("window_seconds", 10)),
@@ -135,6 +160,13 @@ channels:
     enabled: false # 第二优先级渠道，首版默认关闭
     url: \"\" # Webhook 地址
     timeout_seconds: 10 # 请求超时秒数
+
+llm_review:
+  enabled: false # 是否启用 LLM 命令审核
+  api_base_url: \"\" # OpenAI-compatible 接口基地址，例如 https://api.openai.com/v1
+  api_key: \"\" # 认证密钥
+  model_name: \"\" # 模型名称
+  timeout_seconds: 10 # 审核请求超时秒数
 
 rate_limit:
   enabled: true # 是否启用基础限流

@@ -4,13 +4,14 @@
 
 > This project is based on [kdush/Claude-Code-Notifier](https://github.com/kdush/Claude-Code-Notifier), with a simplified and reworked implementation for the goals of this repository.
 
-**A lightweight notification system for Claude Code, focused on permission prompts, task completion notifications, and high-risk operation alerts.**
+**A lightweight notification system for Claude Code, focused on permission prompts, task completion notifications, high-risk operation alerts, and optional LLM command review.**
 
 ## ✨ Features
 
 - **Permission alerts** — notify immediately when Claude Code enters a permission confirmation flow
 - **Stop alerts** — notify when Claude Code finishes work and waits for you to review results or continue
 - **High-risk warnings** — notify when a high-risk Bash rule is matched
+- **LLM command review** — optionally ask an LLM for allow / ask / deny before executing Bash
 - **Rate limiting** — fixed-window throttling to avoid notification bursts
 - **Simple integration** — includes CLI commands for config initialization and hook installation/uninstallation
 
@@ -134,6 +135,13 @@ channels:
     url: ""
     timeout_seconds: 10
 
+llm_review:
+  enabled: false
+  api_base_url: "https://api.openai.com/v1"
+  api_key: ""
+  model_name: ""
+  timeout_seconds: 10
+
 rate_limit:
   enabled: true
   window_seconds: 10
@@ -148,6 +156,8 @@ logging:
 
 Notes:
 - `PreToolUse.AskUserQuestion` notifications now prefer the readable question text instead of sending the full structured `tool_input`
+- When `llm_review.enabled = true`, every `PreToolUse.Bash` request goes directly to the LLM reviewer instead of being pre-filtered by local high-risk rules
+- The LLM review reads `tool_input.command` and `tool_input.description`, then returns `allow`, `ask`, or `deny` through Claude Code's official `hookSpecificOutput` protocol
 - Telegram can auto-delete sent messages via `auto_delete_after_seconds`; after a successful send it blocks for that many seconds before calling `deleteMessage`; `0` disables it, values below `0` clamp to `0`, and values above `10` clamp to `10`
 - Whether deletion succeeds still depends on Telegram's official permission rules
 - Local file logging writes the full hook debug details to the file pointed to by `logging.file_path` and rotates automatically by size; each file is capped at 1MB and at most 5 files are kept in total

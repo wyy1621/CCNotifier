@@ -4,13 +4,14 @@
 
 > 本项目参考自 [kdush/Claude-Code-Notifier](https://github.com/kdush/Claude-Code-Notifier)，做了简化与重构。
 
-**面向 Claude Code 的轻量通知系统，聚焦权限提醒、任务结束提醒与高风险操作预警。**
+**面向 Claude Code 的轻量通知系统，聚焦权限提醒、任务结束提醒、高风险操作预警与可选的 LLM 命令审核。**
 
 ## ✨ 特性
 
 - **权限提醒**：当 Claude Code 进入权限确认流程时立即通知
 - **停止提醒**：当 Claude Code 完成工作并等待你查看结果或继续处理时通知
 - **高风险预警**：执行高风险 Bash 规则时发送提醒
+- **LLM 命令审核**：可选地在执行 Bash 前调用大模型返回 allow / ask / deny
 - **限流**：固定时间窗限流，避免短时间通知洪泛
 - **简洁接入**：提供配置初始化、hook 安装与卸载 CLI
 
@@ -75,6 +76,7 @@ python -m ccnotifier uninstall-hooks --target local
 ```
 
 安装后的 hook 配置会按 Claude Code hook 事件分别写入：
+
 - `Notification` 使用单个 regex matcher：`permission_prompt|idle_prompt`
 - `PreToolUse` 使用单个 regex matcher：`Bash|AskUserQuestion`
 - `Stop` 保持单独 entry
@@ -134,6 +136,13 @@ channels:
     url: ""
     timeout_seconds: 10
 
+llm_review:
+  enabled: false
+  api_base_url: "https://api.openai.com/v1"
+  api_key: ""
+  model_name: ""
+  timeout_seconds: 10
+
 rate_limit:
   enabled: true
   window_seconds: 10
@@ -147,7 +156,10 @@ logging:
 ```
 
 说明：
+
 - `PreToolUse.AskUserQuestion` 通知会优先提取可读的问题文本，不再直接发送整段结构化 `tool_input`
+- `llm_review.enabled = true` 时，所有 `PreToolUse.Bash` 都会直接交给 LLM 审核，不再先用本地高风险规则做前置筛选
+- LLM 审核读取 `tool_input.command` 和 `tool_input.description`，并按 Claude Code 官方 `hookSpecificOutput` 协议返回 `allow`、`ask` 或 `deny`
 - Telegram 可通过 `auto_delete_after_seconds` 控制发送成功后同步等待再撤回；`0` 表示关闭，小于 `0` 按 `0` 处理，大于 `10` 按 `10` 处理
 - 消息能否成功撤回仍取决于 Telegram 官方权限规则
 - 本地日志会把完整 hook 调试信息写入 `logging.file_path` 指向的文件，并按大小自动轮转；单文件 1MB，最多保留 5 份
@@ -166,4 +178,3 @@ logging:
 - `docker rm -f`
 - `kill -9`
 - `chmod 777`
-
