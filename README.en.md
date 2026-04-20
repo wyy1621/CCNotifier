@@ -157,7 +157,7 @@ logging:
 Notes:
 - `PreToolUse.AskUserQuestion` notifications now prefer the readable question text instead of sending the full structured `tool_input`
 - When `llm_review.enabled = true`, every `PreToolUse.Bash` request goes directly to the LLM reviewer instead of being pre-filtered by local high-risk rules
-- The LLM review reads `tool_input.command` and `tool_input.description`, then returns `allow`, `ask`, or `deny` through Claude Code's official `hookSpecificOutput` protocol
+- The LLM review reads `tool_input.command`, `tool_input.description`, the current working directory, and the project name, then returns `allow`, `ask`, or `deny` through Claude Code's official `hookSpecificOutput` protocol
 - Telegram can auto-delete sent messages via `auto_delete_after_seconds`; after a successful send it blocks for that many seconds before calling `deleteMessage`; `0` disables it, values below `0` clamp to `0`, and values above `10` clamp to `10`
 - Whether deletion succeeds still depends on Telegram's official permission rules
 - Local file logging writes the full hook debug details to the file pointed to by `logging.file_path` and rotates automatically by size; each file is capped at 1MB and at most 5 files are kept in total

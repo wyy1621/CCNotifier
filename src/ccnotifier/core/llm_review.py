@@ -27,8 +27,6 @@ class LlmReviewInput:
     description: str
     cwd: str
     project_name: str
-    session_id: str | None
-    tool_use_id: str | None
 
     def to_payload(self) -> Dict[str, Any]:
         return asdict(self)

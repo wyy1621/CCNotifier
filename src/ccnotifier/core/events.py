@@ -68,8 +68,6 @@ def extract_llm_review_input(payload: Dict[str, Any]) -> Optional[LlmReviewInput
         description=_extract_description(payload),
         cwd=cwd,
         project_name=_project_name(cwd),
-        session_id=_extract_session_id(payload),
-        tool_use_id=_extract_tool_use_id(payload),
     )
 
 
@@ -252,13 +250,6 @@ def _extract_description(payload: Dict[str, Any]) -> str:
     description = payload.get("description")
     return str(description) if description else ""
 
-
-# 输入: 原始 hook payload，输出: tool_use_id，不存在时返回 None。
-def _extract_tool_use_id(payload: Dict[str, Any]) -> Optional[str]:
-    tool_use_id = payload.get("tool_use_id")
-    if tool_use_id:
-        return str(tool_use_id)
-    return None
 
 
 def _extract_ask_user_question_prompt(payload: Dict[str, Any]) -> str:
