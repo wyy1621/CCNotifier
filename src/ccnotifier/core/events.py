@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -11,19 +10,6 @@ from .llm_review import LlmReviewInput
 
 SOURCE = "claude-code-hook"
 USER_INTERACTION_EVENT_NAME = "user-interaction-needed"
-
-SENSITIVE_COMMAND_PATTERNS: list[tuple[str, str]] = [
-    ("rm-rf", r"rm\s+-rf"),
-    ("sudo-rm", r"sudo\s+rm"),
-    ("delete-from-where", r"delete\s+from.*where"),
-    ("drop-table", r"drop\s+table"),
-    ("truncate-table", r"truncate\s+table"),
-    ("git-push-force", r"git\s+push\s+--force"),
-    ("npm-publish", r"npm\s+publish"),
-    ("docker-rm-force", r"docker\s+rm.*-f"),
-    ("kill-9", r"kill\s+-9"),
-    ("chmod-777", r"chmod\s+777"),
-]
 
 
 @dataclass(slots=True)
@@ -55,10 +41,11 @@ def build_event_from_hook(hook_event: str, payload: Dict[str, Any]) -> Optional[
 
 # 输入: 原始 hook payload，输出: LLM 命令审核输入；缺少命令时返回 None。
 def extract_llm_review_input(payload: Dict[str, Any]) -> Optional[LlmReviewInput]:
-    if _extract_tool_name(payload) != "Bash":
+    tool_name = _extract_tool_name(payload)
+    if tool_name not in {"Bash", "WebFetch"}:
         return None
 
-    command = _extract_command(payload)
+    command = _extract_review_target(payload, tool_name)
     if not command:
         return None
 
@@ -70,13 +57,6 @@ def extract_llm_review_input(payload: Dict[str, Any]) -> Optional[LlmReviewInput
         project_name=_project_name(cwd),
     )
 
-
-def match_sensitive_command(command: str) -> Optional[str]:
-    command_lower = command.lower()
-    for rule_name, pattern in SENSITIVE_COMMAND_PATTERNS:
-        if re.search(pattern, command_lower):
-            return rule_name
-    return None
 
 
 def _build_notification_event(payload: Dict[str, Any]) -> Optional[NotificationEvent]:
@@ -136,36 +116,7 @@ def _build_pre_tool_use_event(payload: Dict[str, Any]) -> Optional[NotificationE
     tool_name = _extract_tool_name(payload)
     if tool_name == "AskUserQuestion":
         return _build_ask_user_question_event(payload)
-    if tool_name != "Bash":
-        return None
-
-    command = _extract_command(payload)
-    if not command:
-        return None
-
-    matched_rule = match_sensitive_command(command)
-    if not matched_rule:
-        return None
-
-    cwd = _extract_cwd(payload)
-    return NotificationEvent(
-        name="sensitive-operation",
-        source=SOURCE,
-        hook_event="PreToolUse",
-        timestamp=int(time.time()),
-        session_id=_extract_session_id(payload),
-        cwd=cwd,
-        project_name=_project_name(cwd),
-        summary="Claude Code 即将执行高风险 Bash 操作",
-        details={
-            "tool_name": tool_name,
-            "matched_rule": matched_rule,
-            "command_preview": _truncate(command, 200),
-            "session_id": _extract_session_id(payload),
-            "cwd": cwd,
-        },
-        raw=payload,
-    )
+    return None
 
 
 def _build_ask_user_question_event(payload: Dict[str, Any]) -> NotificationEvent:
@@ -241,14 +192,36 @@ def _extract_command(payload: Dict[str, Any]) -> str:
     return str(command) if command else ""
 
 
+def _extract_webfetch_url(payload: Dict[str, Any]) -> str:
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        url = tool_input.get("url")
+        return str(url) if url else ""
+    url = payload.get("url")
+    return str(url) if url else ""
+
+
+def _extract_review_target(payload: Dict[str, Any], tool_name: str) -> str:
+    if tool_name == "Bash":
+        return _extract_command(payload)
+    if tool_name == "WebFetch":
+        return _extract_webfetch_url(payload)
+    return ""
+
+
 # 输入: 原始 hook payload，输出: 命令用途说明文本，不存在时返回空字符串。
 def _extract_description(payload: Dict[str, Any]) -> str:
     tool_input = payload.get("tool_input")
     if isinstance(tool_input, dict):
-        description = tool_input.get("description")
-        return str(description) if description else ""
-    description = payload.get("description")
-    return str(description) if description else ""
+        for field_name in ("description", "prompt"):
+            description = tool_input.get(field_name)
+            if description:
+                return str(description)
+    for field_name in ("description", "prompt"):
+        description = payload.get(field_name)
+        if description:
+            return str(description)
+    return ""
 
 
 

@@ -139,12 +139,12 @@ class TelegramChannel(BaseChannel):
             )
 
         if event_name == "sensitive-operation":
-            matched_rule = self._escape(str(details.get("matched_rule", "")))
             command_preview = self._escape(str(details.get("command_preview", "")))
+            reason = self._escape(str(details.get("reason", "")))
             return (
-                "⚠️ *Claude Code 即将执行高风险操作*\n\n"
+                "⚠️ *Claude Code 已拒绝敏感操作*\n\n"
                 f"*项目*: `{self._escape(project_name)}`\n"
-                f"*规则*: `{matched_rule}`\n"
+                f"*原因*: {reason}\n"
                 f"*命令预览*: `{command_preview}`"
             )
 

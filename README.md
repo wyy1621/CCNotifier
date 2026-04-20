@@ -78,7 +78,8 @@ python -m ccnotifier uninstall-hooks --target local
 安装后的 hook 配置会按 Claude Code hook 事件分别写入：
 
 - `Notification` 使用单个 regex matcher：`permission_prompt|idle_prompt`
-- `PreToolUse` 使用单个 regex matcher：`Bash|AskUserQuestion`
+- `PreToolUse` 使用单个 regex matcher：`AskUserQuestion`
+- `PermissionRequest` 使用单个 regex matcher：`Bash|WebFetch`
 - `Stop` 保持单独 entry
 
 不同 hook 事件不能合并到同一个 entry。
@@ -91,7 +92,7 @@ python -m ccnotifier uninstall-hooks --target local
 | --------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | `user-interaction-needed` | `Notification.permission_prompt` / `Notification.idle_prompt` / `PreToolUse.AskUserQuestion` | Claude Code 需要用户交互             |
 | `claude-stopped`          | `Stop`                                                                                           | Claude Code 已停止并把控制权交回用户 |
-| `sensitive-operation`     | `PreToolUse.Bash`                                                                                | Bash 命令命中高风险规则              |
+| `sensitive-operation`     | `PermissionRequest.Bash` / `PermissionRequest.WebFetch` + LLM `deny`                         | LLM 明确认定应拒绝的敏感操作         |
 
 ## 📬 通知渠道
 
@@ -158,23 +159,8 @@ logging:
 说明：
 
 - `PreToolUse.AskUserQuestion` 通知会优先提取可读的问题文本，不再直接发送整段结构化 `tool_input`
-- `llm_review.enabled = true` 时，所有 `PreToolUse.Bash` 都会直接交给 LLM 审核，不再先用本地高风险规则做前置筛选
-- LLM 审核读取 `tool_input.command`、`tool_input.description`、当前工作目录和项目名，并按 Claude Code 官方 `hookSpecificOutput` 协议返回 `allow`、`ask` 或 `deny`
+- `llm_review.enabled = true` 时，`PermissionRequest.Bash` 和 `PermissionRequest.WebFetch` 会交给 LLM 审核；`allow` / `deny` 由 hook 直接裁决，`ask` 则继续交给 Claude Code 向用户确认
+- LLM 审核读取目标命令或 URL、`tool_input.description`、当前工作目录和项目名；当 LLM 返回 `deny` 时，会额外发送一条 `sensitive-operation` 通知
 - Telegram 可通过 `auto_delete_after_seconds` 控制发送成功后同步等待再撤回；`0` 表示关闭，小于 `0` 按 `0` 处理，大于 `10` 按 `10` 处理
 - 消息能否成功撤回仍取决于 Telegram 官方权限规则
 - 本地日志会把完整 hook 调试信息写入 `logging.file_path` 指向的文件，并按大小自动轮转；单文件 1MB，最多保留 5 份
-
-## ⚠️ 当前高风险 Bash 规则
-
-当前内置规则包括：
-
-- `rm -rf`
-- `sudo rm`
-- `delete from ... where`
-- `drop table`
-- `truncate table`
-- `git push --force`
-- `npm publish`
-- `docker rm -f`
-- `kill -9`
-- `chmod 777`

@@ -77,7 +77,8 @@ python -m ccnotifier uninstall-hooks --target local
 
 The installed hook configuration is written per Claude Code hook event:
 - `Notification` uses a single regex matcher: `permission_prompt|idle_prompt`
-- `PreToolUse` uses a single regex matcher: `Bash|AskUserQuestion`
+- `PreToolUse` uses a single regex matcher: `AskUserQuestion`
+- `PermissionRequest` uses a single regex matcher: `Bash|WebFetch`
 - `Stop` remains a separate entry
 
 Different hook events cannot be merged into the same entry.
@@ -90,7 +91,7 @@ The managed command written during installation is always `python -m ccnotifier.
 | --------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `user-interaction-needed` | `Notification.permission_prompt` / `Notification.idle_prompt` / `PreToolUse.AskUserQuestion` | Claude Code needs user interaction                          |
 | `claude-stopped`          | `Stop`                                                                                           | Claude Code has stopped and handed control back to the user |
-| `sensitive-operation`     | `PreToolUse.Bash`                                                                                | A Bash command matched a high-risk rule                     |
+| `sensitive-operation`     | `PermissionRequest.Bash` / `PermissionRequest.WebFetch` + LLM `deny`                             | The LLM explicitly refused a sensitive operation            |
 
 ## 📬 Notification channels
 
@@ -156,24 +157,10 @@ logging:
 
 Notes:
 - `PreToolUse.AskUserQuestion` notifications now prefer the readable question text instead of sending the full structured `tool_input`
-- When `llm_review.enabled = true`, every `PreToolUse.Bash` request goes directly to the LLM reviewer instead of being pre-filtered by local high-risk rules
-- The LLM review reads `tool_input.command`, `tool_input.description`, the current working directory, and the project name, then returns `allow`, `ask`, or `deny` through Claude Code's official `hookSpecificOutput` protocol
+- When `llm_review.enabled = true`, `PermissionRequest.Bash` and `PermissionRequest.WebFetch` are reviewed by the LLM; `allow` / `deny` are decided by the hook directly, while `ask` falls through to Claude Code's normal user confirmation flow
+- The LLM review reads the command or URL target, `tool_input.description`, the current working directory, and the project name; when the LLM returns `deny`, CCNotifier also sends a `sensitive-operation` notification
 - Telegram can auto-delete sent messages via `auto_delete_after_seconds`; after a successful send it blocks for that many seconds before calling `deleteMessage`; `0` disables it, values below `0` clamp to `0`, and values above `10` clamp to `10`
 - Whether deletion succeeds still depends on Telegram's official permission rules
 - Local file logging writes the full hook debug details to the file pointed to by `logging.file_path` and rotates automatically by size; each file is capped at 1MB and at most 5 files are kept in total
 
-## ⚠️ Current high-risk Bash rules
-
-Current built-in rules include:
-
-- `rm -rf`
-- `sudo rm`
-- `delete from ... where`
-- `drop table`
-- `truncate table`
-- `git push --force`
-- `npm publish`
-- `docker rm -f`
-- `kill -9`
-- `chmod 777`
 

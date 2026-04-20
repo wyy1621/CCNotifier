@@ -45,7 +45,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "user-interaction-needed": {"channels": ["telegram"]},
         "claude-stopped": {"channels": ["telegram"]},
         "sensitive-operation": {"channels": ["telegram"]},
-            },
+    },
     "channels": {
         "telegram": {
             "enabled": False,

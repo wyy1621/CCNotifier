@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 from ..core.config import AppConfig, load_config
-from ..core.events import build_event_from_hook, extract_llm_review_input
-from ..core.llm_review import LlmReviewDecision, LlmReviewResult, review_command
+from ..core.events import NotificationEvent, build_event_from_hook, extract_llm_review_input
+from ..core.llm_review import LlmReviewDecision, review_command
 from ..core.notifier import Notifier
 
-SUPPORTED_HOOK_EVENTS = {"Notification", "Stop", "PreToolUse"}
+SUPPORTED_HOOK_EVENTS = {"Notification", "Stop", "PreToolUse", "PermissionRequest"}
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 LOGGER = logging.getLogger("ccnotifier.hooks.handler")
@@ -26,6 +26,8 @@ def process_hook_event(
     notifier: Notifier | None = None,
 ) -> Dict[str, Any]:
     LOGGER.debug("收到 hook 事件: %s", hook_event)
+    if hook_event == "PermissionRequest":
+        LOGGER.debug("PermissionRequest 原始信息: %s", _json_log(payload))
     config = load_config(config_path)
     event = build_event_from_hook(hook_event, payload)
     if event is not None:
@@ -36,7 +38,7 @@ def process_hook_event(
     else:
         LOGGER.debug("hook 事件未映射为通知: %s", hook_event)
 
-    if hook_event != "PreToolUse":
+    if hook_event != "PermissionRequest":
         return {"continue": True}
     if not config.llm_review.enabled:
         return {"continue": True}
@@ -49,12 +51,15 @@ def process_hook_event(
         review_result = review_command(review_input, config.llm_review)
     except Exception as exc:
         LOGGER.exception("LLM 审核失败: %s", exc)
-        review_result = LlmReviewResult(
-            decision=LlmReviewDecision.ASK,
-            reason="LLM review failed, ask the user to confirm this command before proceeding.",
-        )
+        return {"continue": True}
+
     LOGGER.debug("LLM 审核结果: %s", _json_log({"decision": review_result.decision.value, "reason": review_result.reason}))
-    return _build_pre_tool_use_gate_response(review_result)
+    if review_result.decision == LlmReviewDecision.DENY:
+        denial_event = _build_sensitive_operation_event(payload, review_result.reason)
+        active_notifier = notifier or Notifier(config)
+        active_notifier.send_event(denial_event)
+        LOGGER.debug("拒绝通知已交给 notifier: %s", denial_event.name)
+    return _build_permission_request_response(review_result)
 
 
 def _extract_hook_event(payload: Dict[str, Any]) -> str:
@@ -69,13 +74,41 @@ def _extract_hook_event(payload: Dict[str, Any]) -> str:
     return ""
 
 
-# 输入: LLM 审核结果，输出: 官方 PreToolUse hook JSON 响应。
-def _build_pre_tool_use_gate_response(result: LlmReviewResult) -> Dict[str, Any]:
+# 输入: 原始 PermissionRequest payload 和拒绝原因，输出: 敏感操作通知事件。
+def _build_sensitive_operation_event(payload: Dict[str, Any], reason: str) -> NotificationEvent:
+    review_input = extract_llm_review_input(payload)
+    command_preview = review_input.command if review_input is not None else ""
+    cwd = payload.get("cwd") or payload.get("working_directory") or os.getcwd()
+    session_id = payload.get("session_id") if isinstance(payload.get("session_id"), str) else None
+    return NotificationEvent(
+        name="sensitive-operation",
+        source="claude-code-hook",
+        hook_event="PermissionRequest",
+        timestamp=int(__import__("time").time()),
+        session_id=session_id,
+        cwd=str(cwd),
+        project_name=Path(str(cwd)).resolve().name or "unknown",
+        summary="Claude Code 已拒绝敏感操作",
+        details={
+            "tool_name": payload.get("tool_name") or payload.get("tool") or "",
+            "command_preview": command_preview[:200],
+            "reason": reason,
+            "cwd": str(cwd),
+        },
+        raw=payload,
+    )
+
+
+# 输入: LLM 审核结果，输出: PermissionRequest hook JSON 响应；ask 时放行给 Claude 正常询问用户。
+def _build_permission_request_response(result) -> Dict[str, Any]:
+    if result.decision == LlmReviewDecision.ASK:
+        return {"continue": True}
     return {
         "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": result.decision.value,
-            "permissionDecisionReason": result.reason,
+            "hookEventName": "PermissionRequest",
+            "decision": {
+                "behavior": result.decision.value,
+            },
         }
     }
 

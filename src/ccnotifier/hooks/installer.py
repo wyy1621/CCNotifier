@@ -31,7 +31,11 @@ def install_hooks(target: str = "user") -> Path:
     )
     hooks["PreToolUse"] = _merge_hook_entries(
         hooks.get("PreToolUse", []),
-        [_pre_tool_use_entry("Bash|AskUserQuestion")],
+        [_pre_tool_use_entry("AskUserQuestion")],
+    )
+    hooks["PermissionRequest"] = _merge_hook_entries(
+        hooks.get("PermissionRequest", []),
+        [_permission_request_entry("Bash|WebFetch")],
     )
 
     settings_path.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -43,7 +47,7 @@ def uninstall_hooks(target: str = "user") -> Path:
     settings = _load_json(settings_path)
     hooks = settings.get("hooks", {})
 
-    for hook_name in ["Notification", "Stop", "PreToolUse"]:
+    for hook_name in ["Notification", "Stop", "PreToolUse", "PermissionRequest"]:
         existing = hooks.get(hook_name, [])
         filtered = [entry for entry in existing if entry.get("_tag") != HOOK_TAG]
         if filtered:
@@ -75,6 +79,14 @@ def _stop_entry() -> Dict[str, Any]:
 
 
 def _pre_tool_use_entry(matcher: str) -> Dict[str, Any]:
+    return {
+        "_tag": HOOK_TAG,
+        "matcher": matcher,
+        "hooks": [{"type": "command", "command": build_command()}],
+    }
+
+
+def _permission_request_entry(matcher: str) -> Dict[str, Any]:
     return {
         "_tag": HOOK_TAG,
         "matcher": matcher,
